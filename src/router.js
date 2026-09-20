@@ -1,12 +1,17 @@
 // ========================================
 // EnglishPro — SPA Router (Hash-based)
 // ========================================
+import { isAuthenticated } from './engine/auth.js';
 
 const routes = {};
+const protectedRoutes = new Set();
 let currentPage = null;
 
-export function registerRoute(path, handler) {
+export function registerRoute(path, handler, options = {}) {
     routes[path] = handler;
+    if (options.protected) {
+        protectedRoutes.add(path);
+    }
 }
 
 export function navigate(path) {
@@ -17,8 +22,25 @@ export function getCurrentRoute() {
     return window.location.hash.slice(1) || '/';
 }
 
+function isProtectedRoute(path) {
+    // Check exact match
+    if (protectedRoutes.has(path)) return true;
+    // Check pattern match (e.g., /admin matches /admin/*)
+    for (const protPath of protectedRoutes) {
+        if (path.startsWith(protPath)) return true;
+    }
+    return false;
+}
+
 function matchRoute(hash) {
     const path = hash.slice(1) || '/';
+
+    // Auth guard — redirect to login if hitting protected route
+    if (isProtectedRoute(path) && !isAuthenticated()) {
+        setTimeout(() => { window.location.hash = '#/login'; }, 0);
+        return null;
+    }
+
     // Exact match
     if (routes[path]) return { handler: routes[path], params: {} };
     // Pattern match (e.g., /exam/:type)
@@ -36,7 +58,14 @@ function matchRoute(hash) {
                 break;
             }
         }
-        if (match) return { handler, params };
+        if (match) {
+            // Check protected for pattern matches too
+            if (isProtectedRoute(pattern) && !isAuthenticated()) {
+                setTimeout(() => { window.location.hash = '#/login'; }, 0);
+                return null;
+            }
+            return { handler, params };
+        }
     }
     return null;
 }
@@ -61,15 +90,19 @@ async function handleRoute() {
         requestAnimationFrame(() => {
             app.style.opacity = '1';
         });
-    } else {
-        // 404
-        app.innerHTML = `
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;">
-        <h1 style="font-size:6rem;margin-bottom:1rem;" class="text-gradient">404</h1>
-        <p style="color:var(--text-secondary);margin-bottom:2rem;">Page not found</p>
-        <a href="#/" class="btn btn--primary">Go Home</a>
-      </div>
-    `;
+    } else if (!matchRoute(window.location.hash)) {
+        // If null returned due to auth redirect, don't show 404
+        const path = window.location.hash.slice(1) || '/';
+        if (!isProtectedRoute(path)) {
+            // 404
+            app.innerHTML = `
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;">
+            <h1 style="font-size:6rem;margin-bottom:1rem;" class="text-gradient">404</h1>
+            <p style="color:var(--text-secondary);margin-bottom:2rem;">Page not found</p>
+            <a href="#/" class="btn btn--primary">Go Home</a>
+          </div>
+        `;
+        }
     }
 }
 

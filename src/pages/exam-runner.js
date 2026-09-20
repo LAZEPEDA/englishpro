@@ -12,99 +12,99 @@ import { gradeWriting } from '../engine/writing-grader.js';
 import { gradeSpeaking, calculateWPM } from '../engine/speaking-analyzer.js';
 
 export default function ExamRunnerPage(container, params) {
-    const examType = params.type || getState().exam.type || 'quick';
-    let currentSection = 'reading';
-    let currentItemIndex = 0;
-    let theta = 0;
-    let responses = [];
-    let availableItems = [];
-    let currentItem = null;
-    let timerInterval = null;
-    let timeRemaining = 0;
-    let stage = 1;
-    let sectionScores = {};
-    let writingText = '';
-    let mediaRecorder = null;
-    let audioChunks = [];
-    let isRecording = false;
-    let recordingStartTime = 0;
+  const examType = params.type || getState().exam.type || 'quick';
+  let currentSection = 'reading';
+  let currentItemIndex = 0;
+  let theta = 0;
+  let responses = [];
+  let availableItems = [];
+  let currentItem = null;
+  let timerInterval = null;
+  let timeRemaining = 0;
+  let stage = 1;
+  let sectionScores = {};
+  let writingText = '';
+  let mediaRecorder = null;
+  let audioChunks = [];
+  let isRecording = false;
+  let recordingStartTime = 0;
 
-    // Section flow based on exam type
-    const sectionFlow = {
-        quick: ['reading'],
-        standard: ['reading', 'listening'],
-        full: ['reading', 'listening', 'writing', 'speaking'],
-        modular: [getState().exam.skill || 'reading'],
-    };
+  // Section flow based on exam type
+  const sectionFlow = {
+    quick: ['reading'],
+    standard: ['reading', 'listening'],
+    full: ['reading', 'listening', 'writing', 'speaking'],
+    modular: [getState().exam.skill || 'reading'],
+  };
 
-    const sections = sectionFlow[examType] || ['reading'];
-    const timeLimits = { quick: 900, standard: 3000, full: 7200, modular: 1800 };
+  const sections = sectionFlow[examType] || ['reading'];
+  const timeLimits = { quick: 900, standard: 3000, full: 7200, modular: 1800 };
 
-    function init() {
-        timeRemaining = timeLimits[examType] || 1800;
-        setState('exam.timeStarted', Date.now());
-        loadSection(sections[0]);
-        startTimer();
+  function init() {
+    timeRemaining = timeLimits[examType] || 1800;
+    setState('exam.timeStarted', Date.now());
+    loadSection(sections[0]);
+    startTimer();
+  }
+
+  function loadSection(section) {
+    currentSection = section;
+    currentItemIndex = 0;
+    theta = 0;
+    responses = [];
+    stage = 1;
+
+    if (section === 'reading') {
+      const module = routeToModule(theta, stage);
+      availableItems = [...getItemsForStage(module)];
+      if (availableItems.length === 0) availableItems = [...readingItems.filter(i => i.level === 'B1')];
+      currentItem = selectNextItem(theta, availableItems);
+    } else if (section === 'listening') {
+      const module = routeToModule(theta, stage);
+      availableItems = [...getListeningItemsForStage(module)];
+      if (availableItems.length === 0) availableItems = [...listeningItems.filter(i => i.level === 'B1')];
+      currentItem = selectNextItem(theta, availableItems);
     }
 
-    function loadSection(section) {
-        currentSection = section;
-        currentItemIndex = 0;
-        theta = 0;
-        responses = [];
-        stage = 1;
+    render();
+  }
 
-        if (section === 'reading') {
-            const module = routeToModule(theta, stage);
-            availableItems = [...getItemsForStage(module)];
-            if (availableItems.length === 0) availableItems = [...readingItems.filter(i => i.level === 'B1')];
-            currentItem = selectNextItem(theta, availableItems);
-        } else if (section === 'listening') {
-            const module = routeToModule(theta, stage);
-            availableItems = [...getListeningItemsForStage(module)];
-            if (availableItems.length === 0) availableItems = [...listeningItems.filter(i => i.level === 'B1')];
-            currentItem = selectNextItem(theta, availableItems);
-        }
+  function startTimer() {
+    timerInterval = setInterval(() => {
+      timeRemaining--;
+      updateTimerDisplay();
+      if (timeRemaining <= 0) {
+        clearInterval(timerInterval);
+        finishExam();
+      }
+    }, 1000);
+  }
 
-        render();
+  function updateTimerDisplay() {
+    const el = document.getElementById('exam-timer');
+    if (!el) return;
+    const mins = Math.floor(timeRemaining / 60);
+    const secs = timeRemaining % 60;
+    el.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+    if (timeRemaining < 120) el.style.color = 'var(--color-danger-400)';
+    else if (timeRemaining < 300) el.style.color = 'var(--color-warning-400)';
+  }
+
+  function render() {
+    let content = '';
+
+    if (currentSection === 'reading' || currentSection === 'listening') {
+      content = renderReceptiveQuestion();
+    } else if (currentSection === 'writing') {
+      content = renderWritingSection();
+    } else if (currentSection === 'speaking') {
+      content = renderSpeakingSection();
+    } else if (currentSection === 'grammar') {
+      // Grammar uses the same engine as reading
+      content = renderReceptiveQuestion();
     }
 
-    function startTimer() {
-        timerInterval = setInterval(() => {
-            timeRemaining--;
-            updateTimerDisplay();
-            if (timeRemaining <= 0) {
-                clearInterval(timerInterval);
-                finishExam();
-            }
-        }, 1000);
-    }
-
-    function updateTimerDisplay() {
-        const el = document.getElementById('exam-timer');
-        if (!el) return;
-        const mins = Math.floor(timeRemaining / 60);
-        const secs = timeRemaining % 60;
-        el.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
-        if (timeRemaining < 120) el.style.color = 'var(--color-danger-400)';
-        else if (timeRemaining < 300) el.style.color = 'var(--color-warning-400)';
-    }
-
-    function render() {
-        let content = '';
-
-        if (currentSection === 'reading' || currentSection === 'listening') {
-            content = renderReceptiveQuestion();
-        } else if (currentSection === 'writing') {
-            content = renderWritingSection();
-        } else if (currentSection === 'speaking') {
-            content = renderSpeakingSection();
-        } else if (currentSection === 'grammar') {
-            // Grammar uses the same engine as reading
-            content = renderReceptiveQuestion();
-        }
-
-        container.innerHTML = `
+    container.innerHTML = `
       <div class="exam-runner">
         <!-- Exam Header -->
         <div class="exam-header">
@@ -154,17 +154,17 @@ export default function ExamRunnerPage(container, params) {
       </div>
     `;
 
-        setupEventListeners();
-    }
+    setupEventListeners();
+  }
 
-    function renderReceptiveQuestion() {
-        if (!currentItem) return '<div class="card" style="text-align:center;padding:40px;"><h3>Section Complete</h3><p class="text-secondary">Moving to next section...</p></div>';
+  function renderReceptiveQuestion() {
+    if (!currentItem) return '<div class="card" style="text-align:center;padding:40px;"><h3>Section Complete</h3><p class="text-secondary">Moving to next section...</p></div>';
 
-        const item = currentItem;
-        let questionHTML = '';
+    const item = currentItem;
+    let questionHTML = '';
 
-        if (item.type === 'multiple-choice') {
-            questionHTML = `
+    if (item.type === 'multiple-choice') {
+      questionHTML = `
         <div class="question-card card animate-slide-up">
           <div class="question-card__header">
             <span class="badge badge--primary">Question ${currentItemIndex + 1}</span>
@@ -199,8 +199,8 @@ export default function ExamRunnerPage(container, params) {
           </div>
         </div>
       `;
-        } else if (item.type === 'cloze') {
-            questionHTML = `
+    } else if (item.type === 'cloze') {
+      questionHTML = `
         <div class="question-card card animate-slide-up">
           <div class="question-card__header">
             <span class="badge badge--primary">Question ${currentItemIndex + 1}</span>
@@ -214,8 +214,8 @@ export default function ExamRunnerPage(container, params) {
           </div>
         </div>
       `;
-        } else if (item.type === 'matching') {
-            questionHTML = `
+    } else if (item.type === 'matching') {
+      questionHTML = `
         <div class="question-card card animate-slide-up">
           <div class="question-card__header">
             <span class="badge badge--primary">Question ${currentItemIndex + 1}</span>
@@ -241,8 +241,8 @@ export default function ExamRunnerPage(container, params) {
           </div>
         </div>
       `;
-        } else if (item.type === 'categorization') {
-            questionHTML = `
+    } else if (item.type === 'categorization') {
+      questionHTML = `
         <div class="question-card card animate-slide-up">
           <div class="question-card__header">
             <span class="badge badge--primary">Question ${currentItemIndex + 1}</span>
@@ -265,31 +265,31 @@ export default function ExamRunnerPage(container, params) {
           </div>
         </div>
       `;
-        }
-
-        return questionHTML;
     }
 
-    function renderClozePassage(item) {
-        const parts = item.passage.split('___');
-        let html = '';
-        for (let i = 0; i < parts.length; i++) {
-            html += parts[i];
-            if (i < item.blanks.length) {
-                html += `<select class="cloze-select input" data-blank="${i}" style="display:inline;width:auto;min-width:120px;margin:0 4px;">
+    return questionHTML;
+  }
+
+  function renderClozePassage(item) {
+    const parts = item.passage.split('___');
+    let html = '';
+    for (let i = 0; i < parts.length; i++) {
+      html += parts[i];
+      if (i < item.blanks.length) {
+        html += `<select class="cloze-select input" data-blank="${i}" style="display:inline;width:auto;min-width:120px;margin:0 4px;">
           <option value="">...</option>
           ${item.blanks[i].options.map((o, j) => `<option value="${j}">${o}</option>`).join('')}
         </select>`;
-            }
-        }
-        return html;
+      }
     }
+    return html;
+  }
 
-    function renderWritingSection() {
-        const level = scoreToCEFR(thetaToScore(theta));
-        const prompt = writingPrompts.find(p => p.level === level) || writingPrompts[2];
+  function renderWritingSection() {
+    const level = scoreToCEFR(thetaToScore(theta));
+    const prompt = writingPrompts.find(p => p.level === level) || writingPrompts[2];
 
-        return `
+    return `
       <div class="writing-section animate-slide-up">
         <div class="card" style="margin-bottom:24px;">
           <div class="card__header">
@@ -319,13 +319,13 @@ export default function ExamRunnerPage(container, params) {
         </div>
       </div>
     `;
-    }
+  }
 
-    function renderSpeakingSection() {
-        const level = scoreToCEFR(thetaToScore(theta));
-        const prompt = speakingPrompts.find(p => p.level === level) || speakingPrompts[2];
+  function renderSpeakingSection() {
+    const level = scoreToCEFR(thetaToScore(theta));
+    const prompt = speakingPrompts.find(p => p.level === level) || speakingPrompts[2];
 
-        return `
+    return `
       <div class="speaking-section animate-slide-up">
         <div class="card" style="margin-bottom:24px;">
           <div class="card__header">
@@ -365,315 +365,315 @@ export default function ExamRunnerPage(container, params) {
         </div>
       </div>
     `;
-    }
+  }
 
-    function setupEventListeners() {
-        // Multiple choice options
-        container.querySelectorAll('.option-btn').forEach(btn => {
-            btn.addEventListener('click', () => handleMCQAnswer(parseInt(btn.dataset.option)));
-        });
+  function setupEventListeners() {
+    // Multiple choice options
+    container.querySelectorAll('.option-btn').forEach(btn => {
+      btn.addEventListener('click', () => handleMCQAnswer(parseInt(btn.dataset.option)));
+    });
 
-        // Audio play
-        const playBtn = document.getElementById('btn-play-audio');
-        if (playBtn) {
-            let playCount = 0;
-            playBtn.addEventListener('click', async () => {
-                if (playCount >= 2) return;
-                playCount++;
-                playBtn.disabled = true;
-                playBtn.innerHTML = '<div class="spinner-small"></div> Playing...';
-                try {
-                    await speakText(currentItem.transcript, currentItem.voice, currentItem.rate);
-                } catch (e) { console.warn('TTS error:', e); }
-                playBtn.disabled = false;
-                playBtn.innerHTML = `▶ Play Again (${2 - playCount} remaining)`;
-                if (playCount >= 2) {
-                    playBtn.disabled = true;
-                    playBtn.innerHTML = '✓ Audio played';
-                }
-            });
-        }
-
-        // Cloze submit
-        document.getElementById('btn-submit-cloze')?.addEventListener('click', handleClozeSubmit);
-
-        // Matching submit
-        document.getElementById('btn-submit-matching')?.addEventListener('click', handleMatchingSubmit);
-
-        // Categorization submit
-        document.getElementById('btn-submit-categorization')?.addEventListener('click', handleCategorizationSubmit);
-
-        // Writing editor
-        const editor = document.getElementById('writing-editor');
-        if (editor) {
-            editor.addEventListener('input', () => {
-                writingText = editor.value;
-                const words = editor.value.trim().split(/\s+/).filter(w => w.length > 0);
-                document.getElementById('word-count').textContent = `${words.length} words`;
-            });
-        }
-
-        // Writing submit
-        document.getElementById('btn-submit-writing')?.addEventListener('click', handleWritingSubmit);
-
-        // Speaking recording
-        document.getElementById('btn-start-recording')?.addEventListener('click', startRecording);
-        document.getElementById('btn-stop-recording')?.addEventListener('click', stopRecording);
-        document.getElementById('btn-skip-speaking')?.addEventListener('click', () => {
-            sectionScores.speaking = 35;
-            advanceSection();
-        });
-    }
-
-    function handleMCQAnswer(selected) {
-        const item = currentItem;
-        const correct = selected === item.correct;
-
-        // Visual feedback
-        const options = container.querySelectorAll('.option-btn');
-        options.forEach((opt, i) => {
-            opt.disabled = true;
-            if (i === item.correct) opt.classList.add('correct');
-            if (i === selected && !correct) opt.classList.add('incorrect');
-        });
-
-        // Calculate anti-guess weight
-        const weight = antiGuessWeight(correct, theta, item.difficulty);
-
-        responses.push({ correct, difficulty: item.difficulty, weight, itemId: item.id });
-        theta = estimateTheta(responses);
-        currentItemIndex++;
-
-        // Remove used item
-        availableItems = availableItems.filter(i => i.id !== item.id);
-
-        // Check stage transition
-        const minItems = examType === 'quick' ? 5 : 3;
-        if (currentItemIndex % minItems === 0 && stage < 3) {
-            stage++;
-            const newModule = routeToModule(theta, stage);
-            const newItems = currentSection === 'reading'
-                ? getItemsForStage(newModule)
-                : getListeningItemsForStage(newModule);
-            if (newItems.length > 0) {
-                availableItems = [...newItems.filter(i => !responses.find(r => r.itemId === i.id))];
-            }
-        }
-
-        // Check stopping criteria
-        const maxItems = examType === 'quick' ? 15 : 10;
-        const seThreshold = examType === 'quick' ? 0.45 : 0.32;
-
-        setTimeout(() => {
-            if (shouldStopTest(responses, theta, minItems + 2, maxItems, seThreshold) || availableItems.length === 0) {
-                sectionScores[currentSection] = thetaToScore(theta);
-                advanceSection();
-            } else {
-                currentItem = selectNextItem(theta, availableItems);
-                render();
-            }
-        }, 800);
-    }
-
-    function handleClozeSubmit() {
-        const item = currentItem;
-        let correctCount = 0;
-        item.blanks.forEach((blank, i) => {
-            const select = container.querySelector(`[data-blank="${i}"]`);
-            if (select && parseInt(select.value) === blank.correct) correctCount++;
-        });
-        const ratio = correctCount / item.blanks.length;
-        const correct = ratio >= 0.6;
-        const weight = antiGuessWeight(correct, theta, item.difficulty);
-        responses.push({ correct, difficulty: item.difficulty, weight, itemId: item.id });
-        theta = estimateTheta(responses);
-        currentItemIndex++;
-        availableItems = availableItems.filter(i => i.id !== item.id);
-
-        const maxItems = examType === 'quick' ? 15 : 10;
-        if (shouldStopTest(responses, theta, 5, maxItems) || availableItems.length === 0) {
-            sectionScores[currentSection] = thetaToScore(theta);
-            advanceSection();
-        } else {
-            currentItem = selectNextItem(theta, availableItems);
-            render();
-        }
-    }
-
-    function handleMatchingSubmit() {
-        const item = currentItem;
-        let correctCount = 0;
-        item.items.forEach((_, i) => {
-            const select = container.querySelector(`[data-match="${i}"]`);
-            if (select && parseInt(select.value) === item.correctPairs[i]) correctCount++;
-        });
-        const correct = correctCount >= item.items.length * 0.6;
-        const weight = antiGuessWeight(correct, theta, item.difficulty);
-        responses.push({ correct, difficulty: item.difficulty, weight, itemId: item.id });
-        theta = estimateTheta(responses);
-        currentItemIndex++;
-        availableItems = availableItems.filter(i => i.id !== item.id);
-
-        if (availableItems.length === 0 || shouldStopTest(responses, theta, 5, 15)) {
-            sectionScores[currentSection] = thetaToScore(theta);
-            advanceSection();
-        } else {
-            currentItem = selectNextItem(theta, availableItems);
-            render();
-        }
-    }
-
-    function handleCategorizationSubmit() {
-        const item = currentItem;
-        let correctCount = 0;
-        item.items.forEach((_, i) => {
-            const select = container.querySelector(`[data-cat="${i}"]`);
-            if (select && parseInt(select.value) === item.items[i].correct) correctCount++;
-        });
-        const correct = correctCount >= item.items.length * 0.6;
-        const weight = antiGuessWeight(correct, theta, item.difficulty);
-        responses.push({ correct, difficulty: item.difficulty, weight, itemId: item.id });
-        theta = estimateTheta(responses);
-        currentItemIndex++;
-        availableItems = availableItems.filter(i => i.id !== item.id);
-
-        if (availableItems.length === 0 || shouldStopTest(responses, theta, 5, 15)) {
-            sectionScores[currentSection] = thetaToScore(theta);
-            advanceSection();
-        } else {
-            currentItem = selectNextItem(theta, availableItems);
-            render();
-        }
-    }
-
-    function handleWritingSubmit() {
-        const editor = document.getElementById('writing-editor');
-        const text = editor?.value || '';
-        const prompt = writingPrompts.find(p => p.id === document.getElementById('btn-submit-writing')?.dataset.promptId) || writingPrompts[2];
-
-        const result = gradeWriting(text, prompt);
-        sectionScores.writing = result.totalScore;
-
-        // Store detailed results
-        setState('results.writingDetails', result);
-
-        advanceSection();
-    }
-
-    async function startRecording() {
+    // Audio play
+    const playBtn = document.getElementById('btn-play-audio');
+    if (playBtn) {
+      let playCount = 0;
+      playBtn.addEventListener('click', async () => {
+        if (playCount >= 2) return;
+        playCount++;
+        playBtn.disabled = true;
+        playBtn.innerHTML = '<div class="spinner-small"></div> Playing...';
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
-
-            mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-            mediaRecorder.onstop = () => {
-                stream.getTracks().forEach(t => t.stop());
-                const duration = (Date.now() - recordingStartTime) / 1000;
-                const scoreResult = gradeSpeaking({
-                    wpm: calculateWPM(Math.round(duration * 2), duration), // Estimated
-                    hesitationRatio: 15 + Math.random() * 15,
-                    durationSeconds: duration,
-                });
-                sectionScores.speaking = scoreResult.totalScore;
-                setState('results.speakingDetails', scoreResult);
-                advanceSection();
-            };
-
-            mediaRecorder.start();
-            isRecording = true;
-            recordingStartTime = Date.now();
-
-            document.getElementById('btn-start-recording').style.display = 'none';
-            document.getElementById('btn-stop-recording').style.display = '';
-            document.getElementById('recording-indicator').classList.add('active');
-
-            // Auto-stop after time limit
-            const promptData = JSON.parse(document.getElementById('btn-start-recording').dataset.prompt);
-            setTimeout(() => {
-                if (isRecording) stopRecording();
-            }, promptData.responseTime * 1000);
-
-            // Countdown
-            let remaining = promptData.responseTime;
-            const timer = setInterval(() => {
-                remaining--;
-                const timerEl = document.getElementById('speaking-timer');
-                if (timerEl) timerEl.textContent = `${remaining}s`;
-                if (remaining <= 0) clearInterval(timer);
-            }, 1000);
-
-        } catch (e) {
-            console.warn('Microphone error:', e);
-            sectionScores.speaking = 35;
-            advanceSection();
+          await speakText(currentItem.transcript, currentItem.voice, currentItem.speakingRate || 1.0);
+        } catch (e) { console.warn('TTS error:', e); }
+        playBtn.disabled = false;
+        playBtn.innerHTML = `▶ Play Again (${2 - playCount} remaining)`;
+        if (playCount >= 2) {
+          playBtn.disabled = true;
+          playBtn.innerHTML = '✓ Audio played';
         }
+      });
     }
 
-    function stopRecording() {
-        if (mediaRecorder && isRecording) {
-            mediaRecorder.stop();
-            isRecording = false;
-        }
+    // Cloze submit
+    document.getElementById('btn-submit-cloze')?.addEventListener('click', handleClozeSubmit);
+
+    // Matching submit
+    document.getElementById('btn-submit-matching')?.addEventListener('click', handleMatchingSubmit);
+
+    // Categorization submit
+    document.getElementById('btn-submit-categorization')?.addEventListener('click', handleCategorizationSubmit);
+
+    // Writing editor
+    const editor = document.getElementById('writing-editor');
+    if (editor) {
+      editor.addEventListener('input', () => {
+        writingText = editor.value;
+        const words = editor.value.trim().split(/\s+/).filter(w => w.length > 0);
+        document.getElementById('word-count').textContent = `${words.length} words`;
+      });
     }
 
-    function advanceSection() {
-        const currentIdx = sections.indexOf(currentSection);
-        if (currentIdx < sections.length - 1) {
-            // Load next section
-            theta = 0;
-            responses = [];
-            stage = 1;
-            loadSection(sections[currentIdx + 1]);
-        } else {
-            finishExam();
-        }
+    // Writing submit
+    document.getElementById('btn-submit-writing')?.addEventListener('click', handleWritingSubmit);
+
+    // Speaking recording
+    document.getElementById('btn-start-recording')?.addEventListener('click', startRecording);
+    document.getElementById('btn-stop-recording')?.addEventListener('click', stopRecording);
+    document.getElementById('btn-skip-speaking')?.addEventListener('click', () => {
+      sectionScores.speaking = 35;
+      advanceSection();
+    });
+  }
+
+  function handleMCQAnswer(selected) {
+    const item = currentItem;
+    const correct = selected === item.correct;
+
+    // Visual feedback
+    const options = container.querySelectorAll('.option-btn');
+    options.forEach((opt, i) => {
+      opt.disabled = true;
+      if (i === item.correct) opt.classList.add('correct');
+      if (i === selected && !correct) opt.classList.add('incorrect');
+    });
+
+    // Calculate anti-guess weight
+    const weight = antiGuessWeight(correct, theta, item.difficulty);
+
+    responses.push({ correct, difficulty: item.difficulty, weight, itemId: item.id });
+    theta = estimateTheta(responses);
+    currentItemIndex++;
+
+    // Remove used item
+    availableItems = availableItems.filter(i => i.id !== item.id);
+
+    // Check stage transition
+    const minItems = examType === 'quick' ? 5 : 3;
+    if (currentItemIndex % minItems === 0 && stage < 3) {
+      stage++;
+      const newModule = routeToModule(theta, stage);
+      const newItems = currentSection === 'reading'
+        ? getItemsForStage(newModule)
+        : getListeningItemsForStage(newModule);
+      if (newItems.length > 0) {
+        availableItems = [...newItems.filter(i => !responses.find(r => r.itemId === i.id))];
+      }
     }
 
-    function finishExam() {
-        clearInterval(timerInterval);
+    // Check stopping criteria
+    const maxItems = examType === 'quick' ? 15 : 10;
+    const seThreshold = examType === 'quick' ? 0.45 : 0.32;
 
-        const se = standardError(theta, responses);
-        const overallScore = Object.values(sectionScores).reduce((a, b) => a + b, 0) / Object.keys(sectionScores).length;
+    setTimeout(() => {
+      if (shouldStopTest(responses, theta, minItems + 2, maxItems, seThreshold) || availableItems.length === 0) {
+        sectionScores[currentSection] = thetaToScore(theta);
+        advanceSection();
+      } else {
+        currentItem = selectNextItem(theta, availableItems);
+        render();
+      }
+    }, 800);
+  }
 
-        setState('results.score', Math.round(overallScore));
-        setState('results.theta', theta);
-        setState('results.cefrLevel', scoreToCEFR(Math.round(overallScore)));
-        setState('results.cefrRange', scoreToRange(Math.round(overallScore), se));
-        setState('results.standardError', se);
-        setState('results.skillScores', {
-            reading: sectionScores.reading || null,
-            listening: sectionScores.listening || null,
-            writing: sectionScores.writing || null,
-            speaking: sectionScores.speaking || null,
+  function handleClozeSubmit() {
+    const item = currentItem;
+    let correctCount = 0;
+    item.blanks.forEach((blank, i) => {
+      const select = container.querySelector(`[data-blank="${i}"]`);
+      if (select && parseInt(select.value) === blank.correct) correctCount++;
+    });
+    const ratio = correctCount / item.blanks.length;
+    const correct = ratio >= 0.6;
+    const weight = antiGuessWeight(correct, theta, item.difficulty);
+    responses.push({ correct, difficulty: item.difficulty, weight, itemId: item.id });
+    theta = estimateTheta(responses);
+    currentItemIndex++;
+    availableItems = availableItems.filter(i => i.id !== item.id);
+
+    const maxItems = examType === 'quick' ? 15 : 10;
+    if (shouldStopTest(responses, theta, 5, maxItems) || availableItems.length === 0) {
+      sectionScores[currentSection] = thetaToScore(theta);
+      advanceSection();
+    } else {
+      currentItem = selectNextItem(theta, availableItems);
+      render();
+    }
+  }
+
+  function handleMatchingSubmit() {
+    const item = currentItem;
+    let correctCount = 0;
+    item.items.forEach((_, i) => {
+      const select = container.querySelector(`[data-match="${i}"]`);
+      if (select && parseInt(select.value) === item.correctPairs[i]) correctCount++;
+    });
+    const correct = correctCount >= item.items.length * 0.6;
+    const weight = antiGuessWeight(correct, theta, item.difficulty);
+    responses.push({ correct, difficulty: item.difficulty, weight, itemId: item.id });
+    theta = estimateTheta(responses);
+    currentItemIndex++;
+    availableItems = availableItems.filter(i => i.id !== item.id);
+
+    if (availableItems.length === 0 || shouldStopTest(responses, theta, 5, 15)) {
+      sectionScores[currentSection] = thetaToScore(theta);
+      advanceSection();
+    } else {
+      currentItem = selectNextItem(theta, availableItems);
+      render();
+    }
+  }
+
+  function handleCategorizationSubmit() {
+    const item = currentItem;
+    let correctCount = 0;
+    item.items.forEach((_, i) => {
+      const select = container.querySelector(`[data-cat="${i}"]`);
+      if (select && parseInt(select.value) === item.items[i].correct) correctCount++;
+    });
+    const correct = correctCount >= item.items.length * 0.6;
+    const weight = antiGuessWeight(correct, theta, item.difficulty);
+    responses.push({ correct, difficulty: item.difficulty, weight, itemId: item.id });
+    theta = estimateTheta(responses);
+    currentItemIndex++;
+    availableItems = availableItems.filter(i => i.id !== item.id);
+
+    if (availableItems.length === 0 || shouldStopTest(responses, theta, 5, 15)) {
+      sectionScores[currentSection] = thetaToScore(theta);
+      advanceSection();
+    } else {
+      currentItem = selectNextItem(theta, availableItems);
+      render();
+    }
+  }
+
+  function handleWritingSubmit() {
+    const editor = document.getElementById('writing-editor');
+    const text = editor?.value || '';
+    const prompt = writingPrompts.find(p => p.id === document.getElementById('btn-submit-writing')?.dataset.promptId) || writingPrompts[2];
+
+    const result = gradeWriting(text, prompt);
+    sectionScores.writing = result.totalScore;
+
+    // Store detailed results
+    setState('results.writingDetails', result);
+
+    advanceSection();
+  }
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        const duration = (Date.now() - recordingStartTime) / 1000;
+        const scoreResult = gradeSpeaking({
+          wpm: calculateWPM(Math.round(duration * 2), duration), // Estimated
+          hesitationRatio: 15 + Math.random() * 15,
+          durationSeconds: duration,
         });
-        setState('results.completedAt', new Date().toISOString());
-        setState('exam.status', 'completed');
+        sectionScores.speaking = scoreResult.totalScore;
+        setState('results.speakingDetails', scoreResult);
+        advanceSection();
+      };
 
-        navigate('/results');
+      mediaRecorder.start();
+      isRecording = true;
+      recordingStartTime = Date.now();
+
+      document.getElementById('btn-start-recording').style.display = 'none';
+      document.getElementById('btn-stop-recording').style.display = '';
+      document.getElementById('recording-indicator').classList.add('active');
+
+      // Auto-stop after time limit
+      const promptData = JSON.parse(document.getElementById('btn-start-recording').dataset.prompt);
+      setTimeout(() => {
+        if (isRecording) stopRecording();
+      }, promptData.responseTime * 1000);
+
+      // Countdown
+      let remaining = promptData.responseTime;
+      const timer = setInterval(() => {
+        remaining--;
+        const timerEl = document.getElementById('speaking-timer');
+        if (timerEl) timerEl.textContent = `${remaining}s`;
+        if (remaining <= 0) clearInterval(timer);
+      }, 1000);
+
+    } catch (e) {
+      console.warn('Microphone error:', e);
+      sectionScores.speaking = 35;
+      advanceSection();
     }
+  }
 
-    function getProgress() {
-        const sectionIdx = sections.indexOf(currentSection);
-        const sectionProgress = (sectionIdx / sections.length) * 100;
-        const itemProgress = (currentItemIndex / 15) * (100 / sections.length);
-        return Math.min(100, sectionProgress + itemProgress);
+  function stopRecording() {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      isRecording = false;
     }
+  }
 
-    function getDifficultyLabel(d) {
-        if (d < -1.5) return '🟢 Basic';
-        if (d < -0.5) return '🟡 Elementary';
-        if (d < 0.5) return '🟠 Intermediate';
-        if (d < 1.5) return '🔴 Advanced';
-        return '🟣 Expert';
+  function advanceSection() {
+    const currentIdx = sections.indexOf(currentSection);
+    if (currentIdx < sections.length - 1) {
+      // Load next section
+      theta = 0;
+      responses = [];
+      stage = 1;
+      loadSection(sections[currentIdx + 1]);
+    } else {
+      finishExam();
     }
+  }
 
-    init();
+  function finishExam() {
+    clearInterval(timerInterval);
 
-    return {
-        destroy() {
-            clearInterval(timerInterval);
-            if (mediaRecorder && isRecording) mediaRecorder.stop();
-        }
-    };
+    const se = standardError(theta, responses);
+    const overallScore = Object.values(sectionScores).reduce((a, b) => a + b, 0) / Object.keys(sectionScores).length;
+
+    setState('results.score', Math.round(overallScore));
+    setState('results.theta', theta);
+    setState('results.cefrLevel', scoreToCEFR(Math.round(overallScore)));
+    setState('results.cefrRange', scoreToRange(Math.round(overallScore), se));
+    setState('results.standardError', se);
+    setState('results.skillScores', {
+      reading: sectionScores.reading || null,
+      listening: sectionScores.listening || null,
+      writing: sectionScores.writing || null,
+      speaking: sectionScores.speaking || null,
+    });
+    setState('results.completedAt', new Date().toISOString());
+    setState('exam.status', 'completed');
+
+    navigate('/results');
+  }
+
+  function getProgress() {
+    const sectionIdx = sections.indexOf(currentSection);
+    const sectionProgress = (sectionIdx / sections.length) * 100;
+    const itemProgress = (currentItemIndex / 15) * (100 / sections.length);
+    return Math.min(100, sectionProgress + itemProgress);
+  }
+
+  function getDifficultyLabel(d) {
+    if (d < -1.5) return '🟢 Basic';
+    if (d < -0.5) return '🟡 Elementary';
+    if (d < 0.5) return '🟠 Intermediate';
+    if (d < 1.5) return '🔴 Advanced';
+    return '🟣 Expert';
+  }
+
+  init();
+
+  return {
+    destroy() {
+      clearInterval(timerInterval);
+      if (mediaRecorder && isRecording) mediaRecorder.stop();
+    }
+  };
 }

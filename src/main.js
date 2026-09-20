@@ -17,9 +17,10 @@ import ExamRunnerPage from './pages/exam-runner.js';
 import ResultsPage from './pages/results.js';
 import CertificatePage from './pages/certificate.js';
 import VerifyPage from './pages/verify.js';
+import LoginPage from './pages/login.js';
 import AdminPage from './pages/admin.js';
 
-// Register routes
+// Public routes
 registerRoute('/', LandingPage);
 registerRoute('/exam-select', ExamSelectPage);
 registerRoute('/system-check', SystemCheckPage);
@@ -28,7 +29,10 @@ registerRoute('/results', ResultsPage);
 registerRoute('/certificate', CertificatePage);
 registerRoute('/verify', VerifyPage);
 registerRoute('/verify/:hash', VerifyPage);
-registerRoute('/admin', AdminPage);
+registerRoute('/login', LoginPage);
+
+// Protected routes (require authentication)
+registerRoute('/admin', AdminPage, { protected: true });
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {

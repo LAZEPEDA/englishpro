@@ -88,18 +88,23 @@ export function standardError(theta, responses) {
  * @param {boolean} correct - Whether the answer was correct
  * @param {number} theta - Current ability estimate
  * @param {number} difficulty - Item difficulty
- * @param {number} [guessThreshold=0.25] - Probability threshold for guess detection
- * @returns {number} Weight [0.3, 1.0]
+ * @param {number} [guessThreshold=0.20] - Probability threshold for guess detection (stricter)
+ * @returns {number} Weight [0.15, 1.0]
  */
-export function antiGuessWeight(correct, theta, difficulty, guessThreshold = 0.25) {
+export function antiGuessWeight(correct, theta, difficulty, guessThreshold = 0.20) {
     if (!correct) return 1.0; // Incorrect answers always have full weight
 
     const p = calculateProbability(theta, difficulty);
 
     if (p < guessThreshold) {
         // High difficulty for current ability, likely guessed
-        // Weight proportional to probability
-        return Math.max(0.3, p / guessThreshold);
+        // Weight proportional to probability — harsh penalty
+        return Math.max(0.15, (p / guessThreshold) * 0.8);
+    }
+
+    // Moderate suspicion zone
+    if (p < 0.35) {
+        return Math.max(0.5, p / 0.35);
     }
 
     return 1.0;
@@ -178,12 +183,15 @@ export function routeToModule(theta, currentStage) {
  * @param {number} theta - Current theta
  * @param {number} minItems - Minimum items required
  * @param {number} maxItems - Maximum items allowed
- * @param {number} seThreshold - SE threshold for stopping (e.g., 0.3)
+ * @param {number} seThreshold - SE threshold for stopping (stricter = more items required)
  * @returns {boolean} Should stop
  */
-export function shouldStopTest(responses, theta, minItems, maxItems, seThreshold = 0.32) {
+export function shouldStopTest(responses, theta, minItems, maxItems, seThreshold = 0.25) {
     if (responses.length >= maxItems) return true;
     if (responses.length < minItems) return false;
+
+    // Require at least 8 items even if SE is low
+    if (responses.length < 8) return false;
 
     const se = standardError(theta, responses);
     return se <= seThreshold;
